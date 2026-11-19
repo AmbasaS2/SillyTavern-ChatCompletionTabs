@@ -13,6 +13,7 @@ export class OpenAITabManager {
         this.tabManager = new TabManager({
             containerSelector: '#left-nav-panel #openai_api-presets',
             insertAfterSelector: '#left-nav-panel #openai_api-presets > div',
+            contentRootSelectors: ['#range_block_openai', '#openai_settings'],
             tabPrefix: 'openai-tab',
             activeTabStorageKey: 'openai-active-tab',
             defaultTab: 'parameters',
