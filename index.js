@@ -30,20 +30,23 @@ let openAITabManager = null;
     // Get SillyTavern context
     const context = SillyTavern.getContext();
 
-    // Initialize settings
+    // Avoid saving all SillyTavern settings on every page load.
+    // Persist only if this extension's defaults were actually initialized.
+    let defaultsChanged = false;
     if (!context.extensionSettings[settingsKey]) {
         context.extensionSettings[settingsKey] = { ...defaultSettings };
+        defaultsChanged = true;
     }
 
     // Ensure all default setting keys exist
     for (const key of Object.keys(defaultSettings)) {
         if (context.extensionSettings[settingsKey][key] === undefined) {
             context.extensionSettings[settingsKey][key] = defaultSettings[key];
+            defaultsChanged = true;
         }
     }
 
-    // Save settings
-    context.saveSettingsDebounced();
+    if (defaultsChanged) context.saveSettingsDebounced();
 
     // Initialize extension UI when DOM is fully loaded
     if (document.readyState === 'loading') {
