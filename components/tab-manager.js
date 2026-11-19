@@ -188,7 +188,8 @@ export class TabManager {
             // Only collect settings from the same source section as the preset
             // selector. A second panel elsewhere must not be merged into it.
             const presetContainer = document.querySelector(this.config.containerSelector);
-            const sourceScope = presetContainer?.parentElement || document;
+            const sourceScope = presetContainer?.closest('#ai_response_configuration') ||
+                presetContainer?.closest('#left-nav-panel') || document;
             const roots = this.config.contentRootSelectors
                 .map(selector => sourceScope.querySelector(selector))
                 .filter(Boolean);
