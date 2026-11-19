@@ -8,6 +8,7 @@ export class TabManager {
             containerSelector: config.containerSelector,
             insertAfterSelector: config.insertAfterSelector,
             insertBeforeSelector: config.insertBeforeSelector, // New option
+            contentRootSelectors: config.contentRootSelectors || [],
             useContainerForContent: config.useContainerForContent || false, // New option
             tabPrefix: config.tabPrefix || 'tab',
             activeTabStorageKey: config.activeTabStorageKey,
@@ -22,6 +23,7 @@ export class TabManager {
         this.tabButtonsContainer = null;
         this.isTabsCreated = false;
         this.enabled = true;
+        this.originalContentPositions = new Map();
 
         this.init();
     }
@@ -183,30 +185,52 @@ export class TabManager {
                 }
             });
         } else {
-            // Original behavior: create tab containers after tab buttons
+            // Only collect settings from the same source section as the preset
+            // selector. A second panel elsewhere must not be merged into it.
+            const presetContainer = document.querySelector(this.config.containerSelector);
+            const sourceScope = presetContainer?.parentElement || document;
+            const roots = this.config.contentRootSelectors
+                .map(selector => sourceScope.querySelector(selector))
+                .filter(Boolean);
+
+            // Snapshot before moving parent panels: the Prompts editor is
+            // nested inside the OpenAI settings panel.
+            const sources = new Map();
+            Object.entries(this.config.tabs).forEach(([id, tab]) => {
+                const wrappers = new Set();
+                tab.contentSelectors.forEach(selector => {
+                    sourceScope.querySelectorAll(selector).forEach(element => {
+                        if (this.config.contentRootSelectors.length &&
+                            !roots.some(root => root === element || root.contains(element))) return;
+                        const wrapper = element.closest('.range-block') ||
+                            element.closest('[name]') || element;
+                        if (wrapper?.parentNode) wrappers.add(wrapper);
+                    });
+                });
+                sources.set(id, [...wrappers]);
+            });
+
             const tabContainersHTML = Object.keys(this.config.tabs)
                 .map((id, index) => `
                     <div id="${this.config.tabPrefix}-content-${id}" class="${this.config.className}-content ${index === 0 ? 'active' : ''}"></div>
                 `).join('');
-
             tabButtons.insertAdjacentHTML('afterend', tabContainersHTML);
 
-            // Move content to respective tabs
-            Object.entries(this.config.tabs).forEach(([id, tab]) => {
+            sources.forEach((wrappers, id) => {
                 const tabContainer = document.querySelector(`#${this.config.tabPrefix}-content-${id}`);
-
-                tab.contentSelectors.forEach(selector => {
-                    const elements = document.querySelectorAll(selector);
-                    elements.forEach(element => {
-                        // Find the wrapper (range-block or direct element)
-                        const wrapper = element.closest('.range-block') ||
-                                       element.closest('[name]') ||
-                                       element;
-
-                        if (wrapper && !tabContainer.contains(wrapper) && wrapper.parentNode) {
-                            tabContainer.appendChild(wrapper);
-                        }
-                    });
+                if (!tabContainer) return;
+                wrappers.forEach(wrapper => {
+                    if (!wrapper.parentNode || tabContainer.contains(wrapper) ||
+                        wrapper.contains(tabContainer)) return;
+                    // Return to the exact original location when switching API
+                    // types, instead of the first preset container.
+                    if (!this.originalContentPositions.has(wrapper)) {
+                        const marker = document.createComment('Chat Completion Tabs original position');
+                        const parent = wrapper.parentNode;
+                        parent.insertBefore(marker, wrapper);
+                        this.originalContentPositions.set(wrapper, { marker, parent });
+                    }
+                    tabContainer.appendChild(wrapper);
                 });
             });
         }
@@ -250,18 +274,25 @@ export class TabManager {
                 originalContainer.appendChild(element);
             });
         } else {
-            // Original behavior: move content back to original container
-            if (originalContainer) {
-                Object.keys(this.config.tabs).forEach(id => {
-                    const tabContent = document.querySelector(`#${this.config.tabPrefix}-content-${id}`);
-                    if (tabContent) {
-                        while (tabContent.firstChild) {
-                            originalContainer.appendChild(tabContent.firstChild);
-                        }
-                        tabContent.remove();
+            // Restore every settings element to its own original parent and
+            // sibling position; never merge multiple panels into one preset area.
+            Object.keys(this.config.tabs).forEach(id => {
+                const tabContent = document.querySelector(`#${this.config.tabPrefix}-content-${id}`);
+                if (!tabContent) return;
+                Array.from(tabContent.children).forEach(element => {
+                    const original = this.originalContentPositions.get(element);
+                    if (original?.marker?.parentNode) {
+                        original.marker.parentNode.replaceChild(element, original.marker);
+                    } else if (original?.parent) {
+                        original.parent.appendChild(element);
+                    } else if (originalContainer) {
+                        originalContainer.appendChild(element);
                     }
                 });
-            }
+                tabContent.remove();
+            });
+            for (const { marker } of this.originalContentPositions.values()) marker.remove();
+            this.originalContentPositions.clear();
         }
 
         // Force remove any remaining tab elements
