@@ -24,23 +24,46 @@ export class TabManager {
         this.isTabsCreated = false;
         this.enabled = true;
         this.originalContentPositions = new Map();
+        this.intervalId = null;
+        this.visibilityHandler = null;
 
         this.init();
     }
 
     init() {
-        setTimeout(() => this.checkConditionAndInitialize(), 300);
+        // The two-second fallback detects dynamic API settings changes while this
+        // page is visible. Pausing it in background tabs avoids idle work.
+        this.visibilityHandler = () => {
+            if (document.hidden) {
+                this.stopPolling();
+            } else if (this.enabled) {
+                this.startPolling();
+                this.checkConditionAndInitialize();
+            }
+        };
+        document.addEventListener('visibilitychange', this.visibilityHandler);
+        setTimeout(() => {
+            if (!document.hidden) this.checkConditionAndInitialize();
+        }, 300);
+        this.startPolling();
+    }
+
+    startPolling() {
+        if (!this.enabled || document.hidden || this.intervalId) return;
         this.intervalId = setInterval(() => this.checkConditionAndInitialize(), 2000);
+    }
+
+    stopPolling() {
+        if (!this.intervalId) return;
+        clearInterval(this.intervalId);
+        this.intervalId = null;
     }
 
     setEnabled(enabled) {
         this.enabled = enabled;
         if (!enabled) {
             // Clear interval to prevent re-creation
-            if (this.intervalId) {
-                clearInterval(this.intervalId);
-                this.intervalId = null;
-            }
+            this.stopPolling();
 
             // Force remove tabs immediately when disabled
             if (this.isTabsCreated) {
@@ -54,10 +77,9 @@ export class TabManager {
                 }
             }, 100);
         } else if (enabled && !this.intervalId) {
-            // Re-enable interval checking when enabled
-            this.intervalId = setInterval(() => this.checkConditionAndInitialize(), 2000);
-            // Check immediately
-            this.checkConditionAndInitialize();
+            // Resume immediately when visible, even if visibility changed while disabled.
+            this.startPolling();
+            if (!document.hidden) this.checkConditionAndInitialize();
         }
     }
 
@@ -381,11 +403,12 @@ export class TabManager {
         }
     }
 
-    // Clean up method to stop all timers
+    // Clean up timers and the visibility listener when this manager is destroyed.
     destroy() {
-        if (this.intervalId) {
-            clearInterval(this.intervalId);
-            this.intervalId = null;
+        this.stopPolling();
+        if (this.visibilityHandler) {
+            document.removeEventListener('visibilitychange', this.visibilityHandler);
+            this.visibilityHandler = null;
         }
         if (this.isTabsCreated) {
             this.removeTabs();
