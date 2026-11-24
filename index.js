@@ -7,6 +7,7 @@ const VERSION = "1.0.0";
 
 // Enable/disable is controlled by SillyTavern's built-in extension manager.
 import { OpenAITabManager } from './components/openai-tab-manager.js';
+import { eventSource, event_types } from '../../../../script.js';
 
 let openAITabManager = null;
 
@@ -20,6 +21,8 @@ let openAITabManager = null;
 
 function initExtensionUI() {
     initializeOpenAITabs();
+    eventSource.on(event_types.APP_READY, () => openAITabManager?.tabManager.syncPolling());
+    eventSource.on(event_types.MAIN_API_CHANGED, () => openAITabManager?.tabManager.syncPolling());
 }
 
 function initializeOpenAITabs() {
@@ -27,19 +30,6 @@ function initializeOpenAITabs() {
         openAITabManager = new OpenAITabManager();
     }
 }
-
-// Additional initialization calls with delays to ensure proper loading
-setTimeout(() => {
-    if (openAITabManager) {
-        openAITabManager.refreshTabs();
-    }
-}, 1000);
-
-setTimeout(() => {
-    if (openAITabManager) {
-        openAITabManager.refreshTabs();
-    }
-}, 3000);
 
 // Export for debugging purposes
 window.ChatCompletionTabs = {

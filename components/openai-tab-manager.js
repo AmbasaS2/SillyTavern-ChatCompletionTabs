@@ -11,6 +11,7 @@ import { TabManager } from './tab-manager.js';
 export class OpenAITabManager {
     constructor() {
         this.tabManager = new TabManager({
+            drawerSelector: '#left-nav-panel',
             containerSelector: '#left-nav-panel #openai_api-presets',
             insertAfterSelector: '#left-nav-panel #openai_api-presets > div',
             contentRootSelectors: ['#range_block_openai', '#openai_settings'],

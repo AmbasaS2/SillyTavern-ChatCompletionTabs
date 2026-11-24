@@ -15,6 +15,7 @@ export class TabManager {
             defaultTab: config.defaultTab || Object.keys(config.tabs)[0],
             tabs: config.tabs, // { id: { label, icon, contentSelector } }
             checkCondition: config.checkCondition || (() => true),
+            drawerSelector: config.drawerSelector,
             onTabSwitch: config.onTabSwitch,
             className: config.className || 'generic-tab'
         };
@@ -26,26 +27,32 @@ export class TabManager {
         this.originalContentPositions = new Map();
         this.intervalId = null;
         this.visibilityHandler = null;
+        this.drawerObserver = null;
 
         this.init();
     }
 
     init() {
-        // The two-second fallback detects dynamic API settings changes while this
-        // page is visible. Pausing it in background tabs avoids idle work.
-        this.visibilityHandler = () => {
-            if (document.hidden) {
-                this.stopPolling();
-            } else if (this.enabled) {
-                this.startPolling();
-                this.checkConditionAndInitialize();
-            }
-        };
+        this.visibilityHandler = () => this.syncPolling();
         document.addEventListener('visibilitychange', this.visibilityHandler);
-        setTimeout(() => {
-            if (!document.hidden) this.checkConditionAndInitialize();
-        }, 300);
-        this.startPolling();
+        const drawer = this.config.drawerSelector && document.querySelector(this.config.drawerSelector);
+        if (drawer) {
+            this.drawerObserver = new MutationObserver(this.visibilityHandler);
+            this.drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['class', 'hidden', 'style'] });
+        }
+        this.syncPolling();
+    }
+
+    syncPolling() {
+        const drawer = this.config.drawerSelector && document.querySelector(this.config.drawerSelector);
+        if (!this.enabled || document.hidden || (this.config.drawerSelector && (
+            !drawer || drawer.hidden || drawer.classList.contains('closedDrawer') || drawer.style.display === 'none'
+        ))) {
+            this.stopPolling();
+        } else if (!this.intervalId) {
+            this.checkConditionAndInitialize();
+            this.startPolling();
+        }
     }
 
     startPolling() {
@@ -76,11 +83,7 @@ export class TabManager {
                     this.forceRemoveAllTabElements();
                 }
             }, 100);
-        } else if (enabled && !this.intervalId) {
-            // Resume immediately when visible, even if visibility changed while disabled.
-            this.startPolling();
-            if (!document.hidden) this.checkConditionAndInitialize();
-        }
+        } else this.syncPolling();
     }
 
     // Force remove all tab-related elements by class name
@@ -406,6 +409,8 @@ export class TabManager {
     // Clean up timers and the visibility listener when this manager is destroyed.
     destroy() {
         this.stopPolling();
+        this.drawerObserver?.disconnect();
+        this.drawerObserver = null;
         if (this.visibilityHandler) {
             document.removeEventListener('visibilitychange', this.visibilityHandler);
             this.visibilityHandler = null;
